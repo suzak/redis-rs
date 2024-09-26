@@ -328,7 +328,7 @@ fn parse_protocol(query: &HashMap<Cow<str>, Cow<str>>) -> RedisResult<ProtocolVe
     })
 }
 
-fn url_to_tcp_connection_info(url: url::Url) -> RedisResult<ConnectionInfo> {
+fn url_to_tcp_connection_info(url: &url::Url) -> RedisResult<ConnectionInfo> {
     let host = match url.host() {
         Some(host) => {
             // Here we manually match host's enum arms and call their to_string().
@@ -419,7 +419,7 @@ fn url_to_tcp_connection_info(url: url::Url) -> RedisResult<ConnectionInfo> {
 }
 
 #[cfg(unix)]
-fn url_to_unix_connection_info(url: url::Url) -> RedisResult<ConnectionInfo> {
+fn url_to_unix_connection_info(url: &url::Url) -> RedisResult<ConnectionInfo> {
     let query: HashMap<_, _> = url.query_pairs().collect();
     Ok(ConnectionInfo {
         addr: ConnectionAddr::Unix(url.to_file_path().map_err(|_| -> RedisError {
@@ -441,7 +441,7 @@ fn url_to_unix_connection_info(url: url::Url) -> RedisResult<ConnectionInfo> {
 }
 
 #[cfg(not(unix))]
-fn url_to_unix_connection_info(_: url::Url) -> RedisResult<ConnectionInfo> {
+fn url_to_unix_connection_info(_: &url::Url) -> RedisResult<ConnectionInfo> {
     fail!((
         ErrorKind::InvalidClientConfig,
         "Unix sockets are not available on this platform."
@@ -449,6 +449,12 @@ fn url_to_unix_connection_info(_: url::Url) -> RedisResult<ConnectionInfo> {
 }
 
 impl IntoConnectionInfo for url::Url {
+    fn into_connection_info(self) -> RedisResult<ConnectionInfo> {
+        (&self).into_connection_info()
+    }
+}
+
+impl IntoConnectionInfo for &url::Url {
     fn into_connection_info(self) -> RedisResult<ConnectionInfo> {
         match self.scheme() {
             "redis" | "rediss" => url_to_tcp_connection_info(self),
@@ -1982,7 +1988,7 @@ mod tests {
             ),
         ];
         for (url, expected) in cases.into_iter() {
-            let res = url_to_tcp_connection_info(url.clone()).unwrap();
+            let res = url_to_tcp_connection_info(&url).unwrap();
             assert_eq!(res.addr, expected.addr, "addr of {url} is not expected");
             assert_eq!(
                 res.redis.db, expected.redis.db,
@@ -2029,7 +2035,7 @@ mod tests {
             ),
         ];
         for (url, expected, detail) in cases.into_iter() {
-            let res = url_to_tcp_connection_info(url).unwrap_err();
+            let res = url_to_tcp_connection_info(&url).unwrap_err();
             assert_eq!(
                 res.kind(),
                 crate::ErrorKind::InvalidClientConfig,
@@ -2116,7 +2122,7 @@ mod tests {
                 expected.addr,
                 "addr of {url} is not expected",
             );
-            let res = url_to_unix_connection_info(url.clone()).unwrap();
+            let res = url_to_unix_connection_info(&url).unwrap();
             assert_eq!(res.addr, expected.addr, "addr of {url} is not expected");
             assert_eq!(
                 res.redis.db, expected.redis.db,
